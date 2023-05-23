@@ -1,0 +1,11 @@
+--2023-05-23 20:01:38--  https://search.rcsb.org/rcsbsearch/v2/query?json=%7B%22query%22%3A%7B%22type%22%3A%22terminal%22%2C%22service%22%3A%22text%22%2C%22parameters%22%3A%7B%22attribute%22%3A%22struct_keywords.pdbx_keywords%22%2C%22operator%22%3A%22contains_phrase%22%2C%22value%22%3A%22VIRUS%22%7D%7D%2C%22request_options%22%3A%7B%22return_all_hits%22%3Atrue%2C%22results_verbosity%22%3A%22compact%22%7D%2C%22return_type%22%3A%22entry%22%7D
+Resolving search.rcsb.org (search.rcsb.org)... 128.6.158.124
+Connecting to search.rcsb.org (search.rcsb.org)|128.6.158.124|:443... connected.
+HTTP request sent, awaiting response... 200 
+Length: unspecified [application/json]
+Saving to: ‘response.json’
+
+     0K .......... ..                                          23,4K=0,6s
+
+2023-05-23 20:01:44 (23,4 KB/s) - ‘response.json’ saved [13185]
+

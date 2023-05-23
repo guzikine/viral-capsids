@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# This script takes the PDB ids which were
+# checked using cif cod tools and parses
+# them into the main executable one by
+# one.
+
+PDB_ARCHIVE=./PDB_archive
+INPUT=$(cat ./REST/correct_entries.ids)
+IFS=',' read -ra CORRECT_ENTRIES <<< "$INPUT"
+
+for id in "${CORRECT_ENTRIES[@]}" 
+do
+	./virus-particle-structure $PDB_ARCHIVE/$id.cif
+done

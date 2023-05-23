@@ -1,0 +1,6 @@
+tests/outputs/virus-particle-structure_001.diff: ./virus-particle-structure
+tests/outputs/virus-particle-structure_002.diff: ./virus-particle-structure
+tests/outputs/virus-particle-structure_003.diff: ./virus-particle-structure
+tests/outputs/virus-particle-structure_004.diff: ./virus-particle-structure
+tests/outputs/virus-particle-structure_005.diff: ./virus-particle-structure
+tests/outputs/virus-particle-structure_006.diff: ./virus-particle-structure

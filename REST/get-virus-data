@@ -1,0 +1,144 @@
+#!/bin/bash
+
+# This program uses the request.json file
+# to create an URL, that extracts all PDB
+# archive files that are in the category
+# VIRUS. This is done via the PDB Search
+# API.
+
+if ! command -v jq &> /dev/null
+then
+	echo "'jq' command was not found. \
+	You need to install jq command in \
+	order to use this script. You can
+	try 'sudo apt install jq'."
+	exit 1
+fi
+
+if ! command -v cif_cod_check &> /dev/null
+then
+	echo "'cif_cod_check' command was not found. \
+	You need to install cod-tools package in \
+	order to use this script. Reference: \
+	https://wiki.crystallography.net/cod-tools/"
+	exit 1
+fi
+
+if ! command -v esearch &> /dev/null
+then
+	echo "EDirect toolkit was not found. \
+	You need to install EDirect toolkit in \
+	order to use this script. Reference: \
+	https://www.ncbi.nlm.nih.gov/books/NBK179288/"
+	exit 1
+fi
+
+# This part asks the user whether to proceed with the script.
+echo "All PDB files and logs will be lost and renewed \
+with new data."
+echo "Do you want to proceed? [y/n]"
+read answer
+
+if [[ "$answer" == "y" ]]; then
+    echo "Proceeding with the script..."
+else
+    echo "Terminating the script."
+    exit 0
+fi
+
+# Variables.
+PROGRAM_NAME=$0
+PDB_ARCHIVE=../PDB_archive
+BASE_URL="https://files.rcsb.org/download"
+CORRECT_PDB_ENTRIES=()
+INCORRECT_PDB_ENTRIES=()
+
+# This function outputs the program manual.
+usage() {
+	cat << EOF >&2
+Program usage: $PROGRAM_NAME
+
+	The program simply retrieves all PDB entry
+IDs according to criteria specified in the request.json
+via the PDB Search API. Then each ID after verification
+is downloaded into PDB_archive directory.
+EOF
+	exit 1
+}
+
+# Encodes the JSON request into an URI string compatible
+# with the URL.
+pdb_request=$(cat ./request.json)
+encoded_pdb_request=$(echo -n "$pdb_request" | jq -c -r @uri)
+url="https://search.rcsb.org/rcsbsearch/v2/query?json=${encoded_pdb_request}"
+
+# Date and logs are saved into wget.log file for reproducibility.
+wget -O response.json -o ./pdb_search_api_wget.log "$url"
+
+# Extracting PDB entry IDs from the response.json file.
+entry_IDs=($(jq -r '.result_set[]' < response.json))
+
+# This function downloads the PDB archive files based on
+# entry IDs.
+download() {
+  url="$BASE_URL/$1.cif.gz"
+  out=$PDB_ARCHIVE/$1.cif.gz
+  echo "Downloading $url to $out"
+  wget -O $out -a ./pdb_entry_id_wget.log $url
+}
+
+# This function finds the species of the virus
+# by searching the CIF file.
+find_species() {
+	ROW_VALUES=$(cif_select --tabular --tags \
+	"_entity_src_nat.pdbx_organism_scientific \
+	_entity_src_gen.pdbx_gene_src_scientific_name \
+	_entity_src_nat.species" $PDB_ARCHIVE/$1.cif \
+	| cut -f 3)
+	
+	IFS=$'\n' VALUES=($ROW_VALUES)
+	
+	for val in "${VALUES[@]}"
+	do
+		if [ "$val" = "?" ]
+		then
+			continue
+		else
+			len=$(esearch -db nucleotide -query \
+			"$val genome" \
+			| efetch -format docsum \
+			| xtract -pattern DocumentSummary -element Slen \
+			| head -1)
+			echo "$1	$val	$len" >> ./virus_species.tab
+			break
+		fi
+		echo "$1	?	?" >> ./virus_species.tab
+	done 
+}
+
+# Deleting all written lines in the LOG file before
+# starting new download batch. Also removing all
+# CIF files.
+echo -n '' | tee ./pdb_entry_id_wget.log
+echo -n '' | tee ./error.log
+echo -n '' | tee ./virus_species.tab
+rm -rf $PDB_ARCHIVE/*.cif
+
+for id in "${entry_IDs[@]}"
+do
+	download $id
+	gzip -dq $PDB_ARCHIVE/$id.cif.gz
+	if ! cat $PDB_ARCHIVE/$id.cif | cif_cod_check &>> ./error.log
+	then
+		INCORRECT_PDB_ENTRIES+=($id)
+		continue
+	fi
+	CORRECT_PDB_ENTRIES+=($id)
+	find_species $id
+done
+
+# Printing the correct and incorrect ids to destined files.
+printf '%s,' "${CORRECT_PDB_ENTRIES[@]}" > ./correct_entries.ids
+printf '%s,' "${INCORRECT_PDB_ENTRIES[@]}" > ./incorrect_entries.ids
+sed -i 's/,$//' ./correct_entries.ids
+sed -i 's/,$//' ./incorrect_entries.ids

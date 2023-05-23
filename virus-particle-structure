@@ -1,0 +1,294 @@
+#!/usr/bin/perl
+
+# Program specification:
+# This program performs all necessary matrix operations
+# that are given by the CIF file in order to generate 
+# full ATOM coordinates and saves them into a seperate 
+# file. After the full coordiates are retrieved, the
+# volume for the viral capsid is calculated.
+#
+# USAGE:
+# ./virus-particle-structure input.cif
+
+# Importing external libraries.
+use lib '.';
+use operations;
+use strict;
+use warnings;
+
+my $input_file = undef;
+
+# Checking the file validity.
+for my $filename ( @ARGV ) {
+	$input_file = $filename;
+	unless( -e $filename ) {
+		# ERROR.
+		print STDERR
+		        "ERROR: ",
+		        "The provided file or directory does ",
+		        "not exist. Please check the written ",
+		        "arguments for any typos. ",
+	                "Program name: $0. ",
+		        "File name: $filename\n";
+		exit 3;
+	    }
+}
+
+# Defining initial variables.
+my %initial_coordinates = ();
+my %matrices = ();
+my @matrix_intervals = ();
+my @ref_intervals = ();
+my $pdbx_struct_assembly_gen_category = 0;
+my $pdbx_struct_oper_list_category = 0;
+my $matrix_list_line = 1;
+my @mtrx_comp = ();
+my $pdb_id = "";
+
+# Function to fill in the matrix and assign it
+# to the matrices hash.
+sub fill_matrix {
+	my @mtrx_comp = @_;
+	
+	my @matrix_and_translation = (
+  		[0, 0, 0, 0],
+  		[0, 0, 0, 0],
+  		[0, 0, 0, 0]
+	);
+	
+	$matrix_and_translation[0][0] =
+		$mtrx_comp[4];
+	$matrix_and_translation[0][1] =
+		$mtrx_comp[5];
+	$matrix_and_translation[0][2] =
+		$mtrx_comp[6];
+	$matrix_and_translation[0][3] =
+		$mtrx_comp[7];
+	$matrix_and_translation[1][0] =
+		$mtrx_comp[8];
+	$matrix_and_translation[1][1] =
+		$mtrx_comp[9];
+	$matrix_and_translation[1][2] =
+		$mtrx_comp[10];
+	$matrix_and_translation[1][3] =
+		$mtrx_comp[11];
+	$matrix_and_translation[2][0] =
+		$mtrx_comp[12];
+	$matrix_and_translation[2][1] =
+		$mtrx_comp[13];
+	$matrix_and_translation[2][2] =
+		$mtrx_comp[14];
+	$matrix_and_translation[2][3] =
+		$mtrx_comp[15];
+			
+	$matrices{$mtrx_comp[0]} = 
+		\@matrix_and_translation;
+}
+
+# Reading data from the file.
+while( <> ) {
+	if ( /^_entry\.id/ ) {
+		$_ =~ /^_entry\.id\s+(\w+)\s{1}$/;
+		$pdb_id = $1;
+	}
+
+	# This statement identifies and stores ATOM rows into a hash.
+	if ( /^ATOM\s+\d/ ) {
+		my @atom_columns = split( /\s+/, $_ );
+		$initial_coordinates{$atom_columns[1]} = \@atom_columns;
+		next;
+	}
+	
+	# This statement recognizes single matrix index.
+	if ( /^_pdbx_struct_assembly_gen\.oper_expression\s+(\S+)\s*$/ ) {
+		if ( /\(/ ) {
+			$_ =~ /^.+\s+(\S+)\s*$/;
+			@ref_intervals = $1 =~ /\(([^)]+)\)/g;
+			@matrix_intervals = 
+				operations::get_matrix_intervals( 
+					@ref_intervals );
+			next;
+		}
+		else {
+			$_ =~ /^.+\s+(\S+)\s*$/;
+			@ref_intervals = $1 =~ /(\d+)/g;
+			push @matrix_intervals, \@ref_intervals;
+			next;
+		}
+	}
+	
+	# This statement indicates, that CIF file holds multiple matrix indices.
+	if ( /^_pdbx_struct_assembly_gen\.oper_expression\s+$/ ) {
+		$pdbx_struct_assembly_gen_category = 1;
+		next;
+	}
+	
+	# This statement stores multiple matrix indices from CIF file.
+	if ( /^\d|;/ && $pdbx_struct_assembly_gen_category ) {
+		if ( $_ =~ /^;/ ) {
+			@ref_intervals = $_ =~ /(\d+)/g;
+			push @matrix_intervals, \@ref_intervals;
+		}
+		else {
+			my $matrix_indices = ( split( /\s+/, $_ ))[1];
+			if ( $matrix_indices =~ /\(/ ) {
+				@ref_intervals = 
+					$matrix_indices =~ /\(([^)]+)\)/g;
+				@matrix_intervals = 
+					operations::get_matrix_intervals( 
+						@ref_intervals );
+			}
+			else {
+				@ref_intervals = 
+					$matrix_indices =~ /(\d+)/g;
+				push @matrix_intervals, \@ref_intervals;
+			}
+		}
+
+		$pdbx_struct_assembly_gen_category = 0;
+		next;
+	}
+	
+	# This statement stores single matrix.
+	if ( /^_pdbx_struct_oper_list\..+\s+(\S+)\s*$/ ) {
+		$_ =~ /^_pdbx_struct_oper_list\..+\s+(\S+)\s*$/;
+		push @mtrx_comp, $1;
+		if ( /^_pdbx_struct_oper_list.vector\[3\]\s+\S+\s*/ ) {
+			fill_matrix( @mtrx_comp );
+		}
+		next;
+	}
+	
+	# This statement indicates, that CIF file holds multiple matrices.
+	if ( /^_pdbx_struct_oper_list\.id\s+$/ ) {
+		$pdbx_struct_oper_list_category = 1;
+		next;
+	}
+	
+	# This statement stores multiple matrices.
+	if ( /^[^#_]/ && $pdbx_struct_oper_list_category ) {
+		if ( $matrix_list_line == 1 ) {
+			$matrix_list_line = 2;
+			@mtrx_comp = $_ =~ /('.*'|\S+)/g;
+		}
+		else {
+			$matrix_list_line = 1;
+			push @mtrx_comp, ($_ =~ /('.*'|\S+)/g);
+			fill_matrix( @mtrx_comp );
+		}
+		next;
+	}
+	
+	# This statement indicates that matrix rows are over.
+	if ( /^#/ && $pdbx_struct_oper_list_category ) {
+		$pdbx_struct_oper_list_category = 0;
+		next;
+	}
+}
+
+if ( $pdb_id eq "" || scalar(keys %matrices) == 0 ) {
+	print STDERR
+		"ERROR: ",
+		"The file contains no matrices or PDB id. ",
+		"Program name: $0.\n";
+	exit 3;
+}
+
+# Creating global maximum/minimum variables for storing
+# smallest and highest coordinate values.
+# (x_max, y_max, z_max)
+# (x_min, y_min, z_min)
+my @global_max = (undef, undef, undef);
+my @global_min = (undef, undef, undef);
+
+# Defining output file as CSV.
+my $output_file = "./full_coordinates/" . $pdb_id . "_full_coordinates.csv";
+
+# Getting matrix interval arrays for multiplication.
+my $inner_element_count = scalar( @{$matrix_intervals[0]} );
+if ( $inner_element_count == 1 ) {
+	my $is_identity = 
+		operations::is_identity_matrix( 
+			@{$matrices{$matrix_intervals[0]->[0]}} );
+	if ( $is_identity ) {
+		@matrix_intervals = ();
+	}
+}
+my $element_count = scalar( @matrix_intervals );
+
+# Opening ouput CSV file to write.
+my $write_handle = undef;
+if ( open( $write_handle, ">", $output_file ) ) {
+	print "";
+} 
+else {
+	print STDERR
+		"ERROR: ",
+		"Could not open file to write ",
+		"output to. ",
+		"Program name: $0. ",
+		"Output file: $output_file\n";
+	exit 3;
+}
+
+# Defining CSV output columns.
+print $write_handle "_atom_site.group_PDB,",
+	"_atom_site.id,",
+	"_atom_site.type_symbol,",
+	"_atom_site.label_atom_id,",
+	"_atom_site.label_alt_id,",
+	"_atom_site.label_comp_id,",
+	"_atom_site.label_asym_id,",
+	"_atom_site.label_entity_id,",
+	"_atom_site.label_seq_id,",
+	"_atom_site.pdbx_PDB_ins_code,",
+	"_atom_site.Cartn_x,",
+	"_atom_site.Cartn_y,",
+	"_atom_site.Cartn_z,",
+	"_atom_site.occupancy,",
+	"_atom_site.B_iso_or_equiv,",
+	"_atom_site.pdbx_formal_charge,",
+	"_atom_site.auth_seq_id,",
+	"_atom_site.auth_comp_id,",
+	"_atom_site.auth_asym_id,",
+	"_atom_site.auth_atom_id,",
+	"_atom_site.pdbx_PDB_model_num\n";
+
+# Performing all required matrix multiplications and
+# writing to CSV output.
+foreach my $key (sort { $a <=> $b } keys %initial_coordinates) {
+	my @value = @{$initial_coordinates{$key}};
+	my $string = join( ",", @value );
+	print $write_handle "$string\n";
+	
+	# Coordinates (x, y, z).
+	my @coordinates = @value[10..12];
+	
+	my ( $max_ref, $min_ref ) = 
+		operations::get_max_min( 
+			\@global_max, 
+			\@global_min, 
+			\@coordinates );
+	@global_max = @{$max_ref};
+	@global_min = @{$min_ref};
+	
+	if ( $element_count != 0 ) {
+		( $max_ref, $min_ref ) =
+			operations::matrix_iteration( 
+				\@matrix_intervals,
+				\@value,
+				\%matrices,
+				\@global_max,
+				\@global_min, 
+				$element_count,
+				$write_handle );
+		@global_max = @{$max_ref};
+		@global_min = @{$min_ref};
+	}
+}
+
+my $volume = operations::calculate_volume( \@global_max, \@global_min );
+
+print "$pdb_id\t$volume\n";
+
+close($write_handle);
