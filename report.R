@@ -1,6 +1,5 @@
 library(data.table)
 library(ggplot2)
-setwd("/home/karolis/VU/Bioinformatika_III/projektai/3_uzduotis_darbine_kopija/trunk")
 
 #============================
 # Processing volume data
